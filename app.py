@@ -1,87 +1,114 @@
-
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
+import os
+import uuid
 
 app = Flask(__name__)
 
-# CHANGE THESE
-API_TOKEN = "0dba0b41-fa14-4671-9cf7-e1217155218b"
-DEVICE_ID = "46083"
+API_TOKEN = os.getenv("a7a5444d-1153-4f86-825c-6a45147d48f6")
 
-users = {}
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "online",
+        "service": "MRobotics Recharge API"
+    })
 
-def send_message(mobile, text):
+@app.route("/recharge", methods=["POST"])
+def recharge():
+
     try:
-        r = requests.get(
-            "https://whatsbot.tech/api/send_sms",
+        data = request.get_json()
+
+        mobile = data["mobile"]
+        amount = data["amount"]
+        operator = data["operator"]
+
+        company_map = {
+            "VI": 1,
+            "AIRTEL": 2,
+            "IDEA": 3,
+            "BSNL": 4,
+            "JIO": 5,
+            "DISHTV": 6,
+            "TATASKY": 7
+        }
+
+        company_id = company_map.get(operator.upper())
+
+        if not company_id:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid Operator"
+            })
+
+        order_id = str(uuid.uuid4().int)[:10]
+
+        payload = {
+            "api_token": API_TOKEN,
+            "mobile_no": mobile,
+            "amount": amount,
+            "company_id": company_id,
+            "order_id": order_id,
+            "is_stv": "false"
+        }
+
+        response = requests.post(
+            "https://mrobotics.in/api/recharge",
+            data=payload,
+            timeout=60
+        )
+
+        return jsonify(response.json())
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route("/balance")
+def balance():
+
+    try:
+
+        response = requests.post(
+            "https://mrobotics.in/api/operator_balance",
             params={
-                "api_token": API_TOKEN,
-                "mobile": mobile,
-                "message": text,
-                "device_id": DEVICE_ID
+                "api_token": API_TOKEN
             }
         )
 
-        print("========== WHATSBOT DEBUG ==========")
-        print("TO:", mobile)
-        print("MESSAGE:", text)
-        print("STATUS:", r.status_code)
-        print("RESPONSE:", r.text)
-        print("===================================")
+        return jsonify(response.json())
 
     except Exception as e:
-        print("SEND MESSAGE ERROR:", str(e))
+        return jsonify({
+            "error": True,
+            "message": str(e)
+        })
 
 
-@app.route("/", methods=["GET", "POST"])
-def webhook():
+@app.route("/status/<order_id>")
+def status(order_id):
 
-    sender = request.args.get("from")
-    message = request.args.get("message", "").strip()
+    try:
 
-    print("========== INCOMING ==========")
-    print("SENDER:", sender)
-    print("MESSAGE:", message)
-    print("==============================")
-
-    if not sender:
-        return "OK"
-
-    if message.lower() == "recharge":
-        users[sender] = {"step": "mobile"}
-        send_message(sender, "📱 Mobile number ayakkuka")
-
-    elif sender in users and users[sender]["step"] == "mobile":
-        users[sender]["mobile"] = message
-        users[sender]["step"] = "operator"
-        send_message(sender, "📡 Operator ayakkuka (JIO/AIRTEL/BSNL/VI)")
-
-    elif sender in users and users[sender]["step"] == "operator":
-        users[sender]["operator"] = message.upper()
-        users[sender]["step"] = "amount"
-        send_message(sender, "💰 Recharge amount ayakkuka")
-
-    elif sender in users and users[sender]["step"] == "amount":
-
-        users[sender]["amount"] = message
-        users[sender]["step"] = "confirm"
-
-        send_message(
-            sender,
-            f"✅ Confirm\n\n"
-            f"Number: {users[sender]['mobile']}\n"
-            f"Operator: {users[sender]['operator']}\n"
-            f"Amount: ₹{users[sender]['amount']}\n\n"
-            f"Reply YES"
+        response = requests.post(
+            "https://mrobotics.in/api/order_id_status",
+            params={
+                "api_token": API_TOKEN,
+                "order_id": order_id
+            }
         )
 
-    elif sender in users and users[sender]["step"] == "confirm":
+        return jsonify(response.json())
 
-        if message.upper() == "YES":
-            send_message(sender, "⏳ Recharge processing...")
-            send_message(sender, "✅ Recharge Request Received")
-
-    return "OK"
+    except Exception as e:
+        return jsonify({
+            "error": True,
+            "message": str(e)
+        })
 
 
 if __name__ == "__main__":
