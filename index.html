@@ -1,0 +1,44 @@
+<!DOCTYPE html><html>
+<head>
+    <title>Mobile Recharge</title>
+</head>
+<body>
+    <h2>Mobile Recharge</h2><input type="text" id="mobile" placeholder="Mobile Number"><br><br>
+
+<select id="operator">
+    <option>JIO</option>
+    <option>AIRTEL</option>
+    <option>VI</option>
+    <option>BSNL</option>
+</select><br><br>
+
+<input type="number" id="amount" placeholder="Amount"><br><br>
+
+<button onclick="recharge()">Recharge Now</button>
+
+<p id="result"></p>
+
+<script>
+async function recharge() {
+
+    const response = await fetch("https://recharge-bot-rp1s.onrender.com/recharge", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            mobile: document.getElementById("mobile").value,
+            operator: document.getElementById("operator").value,
+            amount: document.getElementById("amount").value
+        })
+    });
+
+    const data = await response.json();
+
+    document.getElementById("result").innerText =
+        JSON.stringify(data);
+}
+</script>
+
+</body>
+</html>
