@@ -5,7 +5,7 @@ import uuid
 
 app = Flask(__name__)
 
-API_TOKEN = os.getenv("a7a5444d-1153-4f86-825c-6a45147d48f6")
+API_TOKEN = os.getenv("API_TOKEN")
 
 @app.route("/")
 def home():
