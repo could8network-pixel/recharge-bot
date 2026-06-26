@@ -1,69 +1,123 @@
 from flask import Flask, request
-from api import send_message, recharge
+from api import send_message
+from utils import (
+    get_users,
+    save_users
+)
 from config import OPERATORS
 
 app = Flask(__name__)
-users = {}
 
-@app.route("/", methods=["GET","POST"])
+
+@app.route("/", methods=["GET", "POST"])
 def webhook():
+
     sender = request.args.get("from")
-    message = (request.args.get("message") or "").strip()
+    message = request.args.get("message", "").strip()
+
+    print("==========================")
+    print("FROM :", sender)
+    print("MESSAGE :", message)
+    print("==========================")
 
     if not sender:
         return "OK"
 
+    users = get_users()
+
+    # Start Recharge
     if message.lower() == "recharge":
-        users[sender] = {"step":"mobile"}
-        send_message(sender,"📱 Enter mobile number")
 
-    elif sender in users and users[sender]["step"]=="mobile":
-        users[sender]["mobile"]=message
-        users[sender]["step"]="operator"
-        send_message(sender,"📡 Operator: JIO / VI / IDEA / BSNL STV / BSNL TOPUP")
+        users[sender] = {
+            "step": "mobile"
+        }
 
-    elif sender in users and users[sender]["step"]=="operator":
-        op = message.upper()
-        if op not in OPERATORS:
-            send_message(sender,"❌ Invalid operator")
-            return "OK"
-        users[sender]["operator"]=op
-        users[sender]["step"]="amount"
-        send_message(sender,"💰 Enter recharge amount")
+        save_users(users)
 
-    elif sender in users and users[sender]["step"]=="amount":
-        users[sender]["amount"]=message
-        users[sender]["step"]="confirm"
         send_message(
             sender,
-            f"Confirm Recharge\n\n"
-            f"Number: {users[sender]['mobile']}\n"
-            f"Operator: {users[sender]['operator']}\n"
-            f"Amount: ₹{users[sender]['amount']}\n\n"
-            f"Reply YES"
+            "📱 Enter Mobile Number"
         )
 
-    elif sender in users and users[sender]["step"]=="confirm":
-        if message.upper()=="YES":
-            result = recharge(
-                users[sender]["mobile"],
-                users[sender]["amount"],
-                OPERATORS[users[sender]["operator"]],
-                sender
+        return "OK"
+
+    # Mobile
+    if sender in users and users[sender]["step"] == "mobile":
+
+        users[sender]["mobile"] = message
+        users[sender]["step"] = "operator"
+
+        save_users(users)
+
+        send_message(
+            sender,
+            "Select Operator\n\n"
+            "1. JIO\n"
+            "2. VI\n"
+            "3. IDEA\n"
+            "4. BSNL STV\n"
+            "5. BSNL TOPUP"
+        )
+
+        return "OK"
+
+    # Operator
+    if sender in users and users[sender]["step"] == "operator":
+
+        operator_map = {
+            "1": "JIO",
+            "2": "VI",
+            "3": "IDEA",
+            "4": "BSNL STV",
+            "5": "BSNL TOPUP"
+        }
+
+        if message not in operator_map:
+
+            send_message(
+                sender,
+                "Invalid Operator."
             )
-            code = result.get("response_code")
-            if code=="TXN":
-                send_message(sender,"✅ Recharge Successful")
-            elif code=="TUP":
-                send_message(sender,"⏳ Recharge Pending")
-            else:
-                send_message(sender,f"❌ Failed: {result.get('response_msg','Unknown error')}")
-            users.pop(sender,None)
-        else:
-            send_message(sender,"❌ Cancelled")
-            users.pop(sender,None)
+
+            return "OK"
+
+        users[sender]["operator"] = operator_map[message]
+        users[sender]["step"] = "amount"
+
+        save_users(users)
+
+        send_message(
+            sender,
+            "💰 Enter Recharge Amount"
+        )
+
+        return "OK"
+
+    # Amount
+    if sender in users and users[sender]["step"] == "amount":
+
+        users[sender]["amount"] = message
+        users[sender]["step"] = "confirm"
+
+        save_users(users)
+
+        send_message(
+            sender,
+            f"""Confirm Recharge
+
+Mobile : {users[sender]['mobile']}
+
+Operator : {users[sender]['operator']}
+
+Amount : ₹{users[sender]['amount']}
+
+Reply YES"""
+        )
+
+        return "OK"
 
     return "OK"
 
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=500
