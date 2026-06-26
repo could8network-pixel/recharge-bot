@@ -115,6 +115,72 @@ Reply YES"""
         )
 
         return "OK"
+       # Confirm Recharge
+    if sender in users and users[sender]["step"] == "confirm":
+
+        if message.upper() == "YES":
+
+            send_message(sender, "⏳ Processing Recharge...")
+
+            spkey = OPERATORS.get(users[sender]["operator"])
+
+            from api import recharge
+
+            result = recharge(
+                number=users[sender]["mobile"],
+                amount=users[sender]["amount"],
+                spkey=spkey,
+                customer_mobile=sender
+            )
+
+            print(result)
+
+            code = result.get("response_code")
+
+            if code == "TXN":
+
+                send_message(
+                    sender,
+                    f"""✅ Recharge Successful
+
+Mobile : {users[sender]['mobile']}
+
+Amount : ₹{users[sender]['amount']}
+
+Txn ID : {result.get('txn_id')}"""
+                )
+
+            elif code == "TUP":
+
+                send_message(
+                    sender,
+                    f"""⏳ Recharge Pending
+
+Txn ID : {result.get('txn_id')}
+
+Please wait."""
+                )
+
+            else:
+
+                send_message(
+                    sender,
+                    f"""❌ Recharge Failed
+
+{result.get('response_msg')}"""
+                )
+
+            users.pop(sender, None)
+
+            save_users(users)
+
+            return "OK"
+
+        else:
+
+            send_message(sender, "Reply YES to continue.")
+
+            return "OK" 
 
     return "OK"
 
