@@ -1,115 +1,83 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
+import json
 import os
-import uuid
+import time
+
+from config import (
+    WHATSBOT_API_TOKEN,
+    DEVICE_ID,
+    MYSTAREC_TOKEN,
+    ADMIN_NUMBER,
+    OPERATORS
+)
 
 app = Flask(__name__)
 
-API_TOKEN = os.getenv("API_TOKEN")
+WALLET_FILE = "wallet.json"
+HISTORY_FILE = "history.json"
 
-@app.route("/")
-def home():
-    return jsonify({
-        "status": "online",
-        "service": "MRobotics Recharge API"
-    })
+users = {}
 
-@app.route("/recharge", methods=["POST"])
-def recharge():
 
-    try:
-        data = request.get_json()
+def load_wallet():
+    if not os.path.exists(WALLET_FILE):
+        return {}
+    with open(WALLET_FILE, "r") as f:
+        return json.load(f)
 
-        mobile = data["mobile"]
-        amount = data["amount"]
-        operator = data["operator"]
 
-        company_map = {
-            "VI": 1,
-            "AIRTEL": 2,
-            "IDEA": 3,
-            "BSNL": 4,
-            "JIO": 5,
-            "DISHTV": 6,
-            "TATASKY": 7
+def save_wallet(data):
+    with open(WALLET_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+def load_history():
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    with open(HISTORY_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_history(data):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+def send_message(mobile, message):
+
+    r = requests.get(
+        "https://whatsbot.tech/api/send_sms",
+        params={
+            "api_token": WHATSBOT_API_TOKEN,
+            "mobile": mobile,
+            "message": message,
+            "device_id": DEVICE_ID
         }
+    )
 
-        company_id = company_map.get(operator.upper())
-
-        if not company_id:
-            return jsonify({
-                "status": "error",
-                "message": "Invalid Operator"
-            })
-
-        order_id = str(uuid.uuid4().int)[:10]
-
-        payload = {
-            "api_token": API_TOKEN,
-            "mobile_no": mobile,
-            "amount": amount,
-            "company_id": company_id,
-            "order_id": order_id,
-            "is_stv": "false"
-        }
-
-        response = requests.post(
-            "https://mrobotics.in/api/recharge",
-            data=payload,
-            timeout=60
-        )
-
-        return jsonify(response.json())
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    print("SEND STATUS:", r.status_code)
+    print("SEND RESPONSE:", r.text)
 
 
-@app.route("/balance")
-def balance():
+@app.route("/", methods=["GET", "POST"])
+def webhook():
 
-    try:
+    sender = request.args.get("from")
+    message = request.args.get("message", "").strip()
 
-        response = requests.post(
-            "https://mrobotics.in/api/operator_balance",
-            params={
-                "api_token": API_TOKEN
-            }
-        )
+    print("FROM:", sender)
+    print("MESSAGE:", message)
 
-        return jsonify(response.json())
+    if not sender:
+        return "OK"
 
-    except Exception as e:
-        return jsonify({
-            "error": True,
-            "message": str(e)
-        })
+    wallets = load_wallet()
+    history = load_history()
 
-
-@app.route("/status/<order_id>")
-def status(order_id):
-
-    try:
-
-        response = requests.post(
-            "https://mrobotics.in/api/order_id_status",
-            params={
-                "api_token": API_TOKEN,
-                "order_id": order_id
-            }
-        )
-
-        return jsonify(response.json())
-
-    except Exception as e:
-        return jsonify({
-            "error": True,
-            "message": str(e)
-        })
+    return "OK"
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
