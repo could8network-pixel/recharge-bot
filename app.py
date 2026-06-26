@@ -1,83 +1,69 @@
 from flask import Flask, request
-import requests
-import json
-import os
-import time
-
-from config import (
-    WHATSBOT_API_TOKEN,
-    DEVICE_ID,
-    MYSTAREC_TOKEN,
-    ADMIN_NUMBER,
-    OPERATORS
-)
+from api import send_message, recharge
+from config import OPERATORS
 
 app = Flask(__name__)
-
-WALLET_FILE = "wallet.json"
-HISTORY_FILE = "history.json"
-
 users = {}
 
-
-def load_wallet():
-    if not os.path.exists(WALLET_FILE):
-        return {}
-    with open(WALLET_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_wallet(data):
-    with open(WALLET_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-
-def load_history():
-    if not os.path.exists(HISTORY_FILE):
-        return []
-    with open(HISTORY_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_history(data):
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-
-def send_message(mobile, message):
-
-    r = requests.get(
-        "https://whatsbot.tech/api/send_sms",
-        params={
-            "api_token": WHATSBOT_API_TOKEN,
-            "mobile": mobile,
-            "message": message,
-            "device_id": DEVICE_ID
-        }
-    )
-
-    print("SEND STATUS:", r.status_code)
-    print("SEND RESPONSE:", r.text)
-
-
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET","POST"])
 def webhook():
-
     sender = request.args.get("from")
-    message = request.args.get("message", "").strip()
-
-    print("FROM:", sender)
-    print("MESSAGE:", message)
+    message = (request.args.get("message") or "").strip()
 
     if not sender:
         return "OK"
 
-    wallets = load_wallet()
-    history = load_history()
+    if message.lower() == "recharge":
+        users[sender] = {"step":"mobile"}
+        send_message(sender,"📱 Enter mobile number")
+
+    elif sender in users and users[sender]["step"]=="mobile":
+        users[sender]["mobile"]=message
+        users[sender]["step"]="operator"
+        send_message(sender,"📡 Operator: JIO / VI / IDEA / BSNL STV / BSNL TOPUP")
+
+    elif sender in users and users[sender]["step"]=="operator":
+        op = message.upper()
+        if op not in OPERATORS:
+            send_message(sender,"❌ Invalid operator")
+            return "OK"
+        users[sender]["operator"]=op
+        users[sender]["step"]="amount"
+        send_message(sender,"💰 Enter recharge amount")
+
+    elif sender in users and users[sender]["step"]=="amount":
+        users[sender]["amount"]=message
+        users[sender]["step"]="confirm"
+        send_message(
+            sender,
+            f"Confirm Recharge\n\n"
+            f"Number: {users[sender]['mobile']}\n"
+            f"Operator: {users[sender]['operator']}\n"
+            f"Amount: ₹{users[sender]['amount']}\n\n"
+            f"Reply YES"
+        )
+
+    elif sender in users and users[sender]["step"]=="confirm":
+        if message.upper()=="YES":
+            result = recharge(
+                users[sender]["mobile"],
+                users[sender]["amount"],
+                OPERATORS[users[sender]["operator"]],
+                sender
+            )
+            code = result.get("response_code")
+            if code=="TXN":
+                send_message(sender,"✅ Recharge Successful")
+            elif code=="TUP":
+                send_message(sender,"⏳ Recharge Pending")
+            else:
+                send_message(sender,f"❌ Failed: {result.get('response_msg','Unknown error')}")
+            users.pop(sender,None)
+        else:
+            send_message(sender,"❌ Cancelled")
+            users.pop(sender,None)
 
     return "OK"
 
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
